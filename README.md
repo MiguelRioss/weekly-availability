@@ -1,15 +1,15 @@
-# Weekly Availability
+# Weekly Unavailability
 
-A React + Vite weekly availability scheduler for MIGUEL, JOAO, TOME, and PEDRO.
+A React + Vite weekly unavailability scheduler for MIGUEL, JOAO, TOME, and PEDRO.
 
 ## Features
 
 - Four fixed users, each with a distinct color.
 - Monday to Sunday timetable with one-hour slots.
-- Click any slot to toggle availability for the selected user.
-- Multiple users in one slot are shown as separate colored sections.
-- All-four overlaps are highlighted and listed below the timetable.
-- Availability is saved in `localStorage`, so refreshing the same browser keeps the schedule.
+- Click any slot to toggle when the selected user is not available.
+- Multiple unavailable users in one slot are shown as separate colored sections.
+- Hours where all four are unavailable are highlighted and listed below the timetable.
+- Unavailability is saved in `localStorage`, so refreshing the same browser keeps the schedule.
 
 ## Run Locally
 
@@ -29,4 +29,4 @@ npm run build
 - Build command: `npm install && npm run build`
 - Publish directory: `dist`
 
-This first version stores data in each browser. To share live availability across different devices, add a small backend or hosted database such as Supabase.
+This first version stores data in each browser. To share live unavailability across different devices, add a small backend or hosted database such as Supabase.

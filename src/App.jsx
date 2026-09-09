@@ -20,7 +20,7 @@ const DAYS = [
 
 const START_HOUR = 7;
 const END_HOUR = 23;
-const STORAGE_KEY = "weekly-availability";
+const STORAGE_KEY = "weekly-unavailability";
 
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, index) => {
   const hour = START_HOUR + index;
@@ -32,7 +32,7 @@ const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, index) => {
   };
 });
 
-function getEmptyAvailability() {
+function getEmptyUnavailability() {
   return Object.fromEntries(
     DAYS.map((day) => [
       day,
@@ -41,8 +41,8 @@ function getEmptyAvailability() {
   );
 }
 
-function normalizeAvailability(value) {
-  const base = getEmptyAvailability();
+function normalizeUnavailability(value) {
+  const base = getEmptyUnavailability();
   const userIds = new Set(USERS.map((user) => user.id));
 
   for (const day of DAYS) {
@@ -58,12 +58,12 @@ function normalizeAvailability(value) {
   return base;
 }
 
-function loadAvailability() {
+function loadUnavailability() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? normalizeAvailability(JSON.parse(saved)) : getEmptyAvailability();
+    return saved ? normalizeUnavailability(JSON.parse(saved)) : getEmptyUnavailability();
   } catch {
-    return getEmptyAvailability();
+    return getEmptyUnavailability();
   }
 }
 
@@ -79,20 +79,20 @@ function UserBadge({ user, compact = false }) {
   );
 }
 
-function AvailabilityCell({ day, hour, selectedUser, availableUsers, onToggle }) {
-  const users = USERS.filter((user) => availableUsers.includes(user.id));
-  const selected = availableUsers.includes(selectedUser);
-  const everyoneAvailable = users.length === USERS.length;
+function UnavailabilityCell({ day, hour, selectedUser, unavailableUsers, onToggle }) {
+  const users = USERS.filter((user) => unavailableUsers.includes(user.id));
+  const selected = unavailableUsers.includes(selectedUser);
+  const everyoneUnavailable = users.length === USERS.length;
   const label =
     users.length === 0
-      ? `${day} ${hour}:00, nobody available`
-      : `${day} ${hour}:00, available: ${users.map((user) => user.name).join(", ")}`;
+      ? `${day} ${hour}:00, nobody marked unavailable`
+      : `${day} ${hour}:00, unavailable: ${users.map((user) => user.name).join(", ")}`;
 
   return (
     <button
       type="button"
       className={`availability-cell ${selected ? "selected-by-current-user" : ""} ${
-        everyoneAvailable ? "everyone-available" : ""
+        everyoneUnavailable ? "everyone-available" : ""
       }`}
       onClick={() => onToggle(day, hour)}
       aria-label={label}
@@ -121,7 +121,7 @@ function AvailabilityCell({ day, hour, selectedUser, availableUsers, onToggle })
         </span>
       )}
 
-      {everyoneAvailable && (
+      {everyoneUnavailable && (
         <span className="all-badge">
           <Users size={11} />
           ALL 4
@@ -133,11 +133,11 @@ function AvailabilityCell({ day, hour, selectedUser, availableUsers, onToggle })
 
 export default function App() {
   const [selectedUser, setSelectedUser] = useState("MIGUEL");
-  const [availability, setAvailability] = useState(loadAvailability);
+  const [unavailability, setUnavailability] = useState(loadUnavailability);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(availability));
-  }, [availability]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(unavailability));
+  }, [unavailability]);
 
   const selectedUserData = useMemo(
     () => USERS.find((user) => user.id === selectedUser),
@@ -149,20 +149,20 @@ export default function App() {
 
     for (const day of DAYS) {
       for (const { hour, label } of HOURS) {
-        if (availability[day][hour].length === USERS.length) {
+        if (unavailability[day][hour].length === USERS.length) {
           slots.push({ day, hour, label });
         }
       }
     }
 
     return slots;
-  }, [availability]);
+  }, [unavailability]);
 
-  function toggleAvailability(day, hour) {
-    setAvailability((current) => {
+  function toggleUnavailability(day, hour) {
+    setUnavailability((current) => {
       const currentUsers = current[day][hour];
-      const isAvailable = currentUsers.includes(selectedUser);
-      const updatedUsers = isAvailable
+      const isUnavailable = currentUsers.includes(selectedUser);
+      const updatedUsers = isUnavailable
         ? currentUsers.filter((user) => user !== selectedUser)
         : [...currentUsers, selectedUser];
 
@@ -177,7 +177,7 @@ export default function App() {
   }
 
   function updateAllSlots(updater) {
-    setAvailability((current) => {
+    setUnavailability((current) => {
       const updated = structuredClone(current);
 
       for (const day of DAYS) {
@@ -195,7 +195,7 @@ export default function App() {
   }
 
   function markWholeDay(day) {
-    setAvailability((current) => {
+    setUnavailability((current) => {
       const updated = structuredClone(current);
       const everySlotSelected = HOURS.every(({ hour }) =>
         updated[day][hour].includes(selectedUser),
@@ -216,7 +216,7 @@ export default function App() {
 
   function markAllWeek() {
     const everySlotSelected = DAYS.every((day) =>
-      HOURS.every(({ hour }) => availability[day][hour].includes(selectedUser)),
+      HOURS.every(({ hour }) => unavailability[day][hour].includes(selectedUser)),
     );
 
     updateAllSlots((slot) =>
@@ -233,13 +233,13 @@ export default function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Weekly planner</p>
-          <h1>Availability Schedule</h1>
+          <h1>Unavailable Schedule</h1>
         </div>
         <UserBadge user={selectedUserData} />
       </header>
 
       <main className="content">
-        <section className="control-panel" aria-label="Availability controls">
+        <section className="control-panel" aria-label="Unavailability controls">
           <div className="control-section">
             <span className="control-label">Editing user</span>
             <div className="user-selector">
@@ -261,7 +261,7 @@ export default function App() {
 
           <div className="global-actions">
             <button type="button" className="secondary-button" onClick={markAllWeek}>
-              Select / Clear Week
+              Mark / Clear Week
             </button>
             <button type="button" className="danger-button" onClick={clearSelectedUser}>
               <RotateCcw size={16} />
@@ -288,7 +288,7 @@ export default function App() {
                     className="whole-day-button"
                     onClick={() => markWholeDay(day)}
                   >
-                    whole day
+                    mark day
                   </button>
                 </div>
               ))}
@@ -299,13 +299,13 @@ export default function App() {
                   <small>{endLabel}</small>
                 </div>,
                 ...DAYS.map((day) => (
-                  <AvailabilityCell
+                  <UnavailabilityCell
                     key={`${day}-${hour}`}
                     day={day}
                     hour={hour}
                     selectedUser={selectedUser}
-                    availableUsers={availability[day][hour]}
-                    onToggle={toggleAvailability}
+                    unavailableUsers={unavailability[day][hour]}
+                    onToggle={toggleUnavailability}
                   />
                 )),
               ])}
@@ -313,11 +313,11 @@ export default function App() {
           </div>
         </section>
 
-        <section className="common-section" aria-label="Common availability">
+        <section className="common-section" aria-label="Common unavailability">
           <div className="common-heading">
             <div>
-              <p className="eyebrow">Everyone available</p>
-              <h2>Common slots</h2>
+              <p className="eyebrow">Everyone unavailable</p>
+              <h2>Blocked slots</h2>
             </div>
             <div className="common-count">
               {commonSlots.length}
@@ -326,7 +326,7 @@ export default function App() {
           </div>
 
           {commonSlots.length === 0 ? (
-            <div className="no-common">No hour currently works for all four people.</div>
+            <div className="no-common">No hour is currently blocked for all four people.</div>
           ) : (
             <div className="common-list">
               {commonSlots.map((slot) => (
@@ -344,3 +344,4 @@ export default function App() {
     </div>
   );
 }
+
