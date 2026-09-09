@@ -6,7 +6,10 @@ import {
 } from "react";
 
 import {
+  CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Lock,
   RotateCcw,
   Users,
@@ -113,13 +116,120 @@ function recordsToUnavailability(records) {
   return result;
 }
 
-function UserBadge({ user, compact = false }) {
+function getISOWeekValue(date = new Date()) {
+  const target = new Date(
+    Date.UTC(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+    ),
+  );
+
+  const dayNumber = target.getUTCDay() || 7;
+
+  target.setUTCDate(
+    target.getUTCDate() + 4 - dayNumber,
+  );
+
+  const yearStart = new Date(
+    Date.UTC(target.getUTCFullYear(), 0, 1),
+  );
+
+  const weekNumber = Math.ceil(
+    ((target - yearStart) / 86400000 + 1) / 7,
+  );
+
+  return `${target.getUTCFullYear()}-W${String(
+    weekNumber,
+  ).padStart(2, "0")}`;
+}
+
+function getMondayFromWeekValue(weekValue) {
+  const match =
+    /^(\d{4})-W(\d{2})$/.exec(weekValue);
+
+  if (!match) {
+    return new Date();
+  }
+
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+
+  const fourthJanuary = new Date(
+    Date.UTC(year, 0, 4),
+  );
+
+  const fourthJanuaryDay =
+    fourthJanuary.getUTCDay() || 7;
+
+  const monday = new Date(fourthJanuary);
+
+  monday.setUTCDate(
+    fourthJanuary.getUTCDate() -
+      fourthJanuaryDay +
+      1 +
+      (week - 1) * 7,
+  );
+
+  return monday;
+}
+
+function getWeekDateRange(weekValue) {
+  const monday =
+    getMondayFromWeekValue(weekValue);
+
+  const sunday = new Date(monday);
+
+  sunday.setUTCDate(
+    sunday.getUTCDate() + 6,
+  );
+
+  const formatter = new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    },
+  );
+
+  return `${formatter.format(
+    monday,
+  )} to ${formatter.format(sunday)}`;
+}
+
+function shiftWeek(weekValue, amount) {
+  const monday =
+    getMondayFromWeekValue(weekValue);
+
+  monday.setUTCDate(
+    monday.getUTCDate() + amount * 7,
+  );
+
+  return getISOWeekValue(
+    new Date(
+      monday.getUTCFullYear(),
+      monday.getUTCMonth(),
+      monday.getUTCDate(),
+    ),
+  );
+}
+
+function UserBadge({
+  user,
+  compact = false,
+}) {
   return (
     <span
       className={`user-badge ${
-        compact ? "user-badge-compact" : ""
+        compact
+          ? "user-badge-compact"
+          : ""
       }`}
-      style={{ "--user-color": user.color }}
+      style={{
+        "--user-color": user.color,
+      }}
     >
       <span className="user-dot" />
       {user.name}
@@ -136,7 +246,8 @@ function UnavailabilityCell({
   onToggle,
   disabled,
 }) {
-  const unavailableUserIds = getSlotUsers(slot);
+  const unavailableUserIds =
+    getSlotUsers(slot);
 
   const users = USERS.filter((user) =>
     unavailableUserIds.includes(user.id),
@@ -165,16 +276,24 @@ function UnavailabilityCell({
     <button
       type="button"
       className={`availability-cell ${
-        selected ? "selected-by-current-user" : ""
+        selected
+          ? "selected-by-current-user"
+          : ""
       } ${
-        everyoneUnavailable ? "everyone-available" : ""
+        everyoneUnavailable
+          ? "everyone-available"
+          : ""
       } ${
-        selectedFixed ? "fixed-by-current-user" : ""
+        selectedFixed
+          ? "fixed-by-current-user"
+          : ""
       }`}
       onClick={() => onToggle(day, hour)}
       disabled={disabled}
       aria-label={`${label}${
-        selectedFixed ? ", fixed marker" : ""
+        selectedFixed
+          ? ", fixed marker"
+          : ""
       }`}
       title={
         fixedMode
@@ -183,7 +302,9 @@ function UnavailabilityCell({
       }
     >
       {users.length === 0 ? (
-        <span className="empty-cell-text">+</span>
+        <span className="empty-cell-text">
+          +
+        </span>
       ) : (
         <span
           className="availability-segments"
@@ -202,11 +323,6 @@ function UnavailabilityCell({
               style={{
                 backgroundColor: user.color,
               }}
-              title={`${user.name}${
-                slot.fixed.includes(user.id)
-                  ? " fixed"
-                  : ""
-              }`}
             />
           ))}
         </span>
@@ -253,9 +369,18 @@ export default function App() {
   ] = useState(false);
 
   const [
+    selectedWeek,
+    setSelectedWeek,
+  ] = useState(() =>
+    getISOWeekValue(),
+  );
+
+  const [
     unavailability,
     setUnavailability,
-  ] = useState(getEmptyUnavailability);
+  ] = useState(
+    getEmptyUnavailability,
+  );
 
   const [
     loading,
@@ -291,7 +416,9 @@ export default function App() {
         }
 
         setUnavailability(
-          recordsToUnavailability(data ?? []),
+          recordsToUnavailability(
+            data ?? [],
+          ),
         );
       } catch (loadError) {
         console.error(
@@ -312,7 +439,9 @@ export default function App() {
     loadUnavailability();
 
     const channel = supabase
-      .channel("weekly-availability-live")
+      .channel(
+        "weekly-availability-live",
+      )
       .on(
         "postgres_changes",
         {
@@ -334,16 +463,26 @@ export default function App() {
   const selectedUserData = useMemo(
     () =>
       USERS.find(
-        (user) => user.id === selectedUser,
+        (user) =>
+          user.id === selectedUser,
       ),
     [selectedUser],
+  );
+
+  const weekDateRange = useMemo(
+    () =>
+      getWeekDateRange(selectedWeek),
+    [selectedWeek],
   );
 
   const openSlots = useMemo(() => {
     const slots = [];
 
     for (const day of DAYS) {
-      for (const { hour, label } of HOURS) {
+      for (const {
+        hour,
+        label,
+      } of HOURS) {
         if (
           getSlotUsers(
             unavailability[day][hour],
@@ -378,14 +517,19 @@ export default function App() {
     try {
       if (fixedMode) {
         const isFixed =
-          slot.fixed.includes(selectedUser);
+          slot.fixed.includes(
+            selectedUser,
+          );
 
         const {
           error: normalDeleteError,
         } = await supabase
           .from("unavailable_slots")
           .delete()
-          .eq("user_id", selectedUser)
+          .eq(
+            "user_id",
+            selectedUser,
+          )
           .eq("day", day)
           .eq("hour", hour)
           .eq("fixed", false);
@@ -398,9 +542,14 @@ export default function App() {
           const {
             error: fixedDeleteError,
           } = await supabase
-            .from("unavailable_slots")
+            .from(
+              "unavailable_slots",
+            )
             .delete()
-            .eq("user_id", selectedUser)
+            .eq(
+              "user_id",
+              selectedUser,
+            )
             .eq("day", day)
             .eq("hour", hour)
             .eq("fixed", true);
@@ -412,9 +561,12 @@ export default function App() {
           const {
             error: insertError,
           } = await supabase
-            .from("unavailable_slots")
+            .from(
+              "unavailable_slots",
+            )
             .insert({
-              user_id: selectedUser,
+              user_id:
+                selectedUser,
               day,
               hour,
               fixed: true,
@@ -422,22 +574,30 @@ export default function App() {
 
           if (
             insertError &&
-            insertError.code !== "23505"
+            insertError.code !==
+              "23505"
           ) {
             throw insertError;
           }
         }
       } else {
         const isNormal =
-          slot.normal.includes(selectedUser);
+          slot.normal.includes(
+            selectedUser,
+          );
 
         if (isNormal) {
           const {
             error: deleteError,
           } = await supabase
-            .from("unavailable_slots")
+            .from(
+              "unavailable_slots",
+            )
             .delete()
-            .eq("user_id", selectedUser)
+            .eq(
+              "user_id",
+              selectedUser,
+            )
             .eq("day", day)
             .eq("hour", hour)
             .eq("fixed", false);
@@ -449,9 +609,12 @@ export default function App() {
           const {
             error: insertError,
           } = await supabase
-            .from("unavailable_slots")
+            .from(
+              "unavailable_slots",
+            )
             .insert({
-              user_id: selectedUser,
+              user_id:
+                selectedUser,
               day,
               hour,
               fixed: false,
@@ -459,7 +622,8 @@ export default function App() {
 
           if (
             insertError &&
-            insertError.code !== "23505"
+            insertError.code !==
+              "23505"
           ) {
             throw insertError;
           }
@@ -496,7 +660,10 @@ export default function App() {
       } = await supabase
         .from("unavailable_slots")
         .delete()
-        .eq("user_id", selectedUser)
+        .eq(
+          "user_id",
+          selectedUser,
+        )
         .eq("fixed", false);
 
       if (deleteError) {
@@ -524,9 +691,10 @@ export default function App() {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Hard Clear will remove ALL unavailable markers for ${selectedUser}, including Fixed markers. Continue?`,
-    );
+    const confirmed =
+      window.confirm(
+        `Hard Clear will remove ALL unavailable markers for ${selectedUser}, including Fixed markers. Continue?`,
+      );
 
     if (!confirmed) {
       return;
@@ -541,7 +709,10 @@ export default function App() {
       } = await supabase
         .from("unavailable_slots")
         .delete()
-        .eq("user_id", selectedUser);
+        .eq(
+          "user_id",
+          selectedUser,
+        );
 
       if (deleteError) {
         throw deleteError;
@@ -572,7 +743,9 @@ export default function App() {
       HOURS.every(({ hour }) =>
         unavailability[day][
           hour
-        ].normal.includes(selectedUser),
+        ].normal.includes(
+          selectedUser,
+        ),
       );
 
     setSaving(true);
@@ -585,7 +758,10 @@ export default function App() {
         } = await supabase
           .from("unavailable_slots")
           .delete()
-          .eq("user_id", selectedUser)
+          .eq(
+            "user_id",
+            selectedUser,
+          )
           .eq("day", day)
           .eq("fixed", false);
 
@@ -623,7 +799,8 @@ export default function App() {
 
           if (
             insertError &&
-            insertError.code !== "23505"
+            insertError.code !==
+              "23505"
           ) {
             throw insertError;
           }
@@ -656,7 +833,9 @@ export default function App() {
         HOURS.every(({ hour }) =>
           unavailability[day][
             hour
-          ].normal.includes(selectedUser),
+          ].normal.includes(
+            selectedUser,
+          ),
         ),
       );
 
@@ -670,7 +849,10 @@ export default function App() {
         } = await supabase
           .from("unavailable_slots")
           .delete()
-          .eq("user_id", selectedUser)
+          .eq(
+            "user_id",
+            selectedUser,
+          )
           .eq("fixed", false);
 
         if (deleteError) {
@@ -680,7 +862,9 @@ export default function App() {
         const rows = [];
 
         for (const day of DAYS) {
-          for (const { hour } of HOURS) {
+          for (const {
+            hour,
+          } of HOURS) {
             const slot =
               unavailability[day][hour];
 
@@ -694,7 +878,8 @@ export default function App() {
 
             if (!alreadyMarked) {
               rows.push({
-                user_id: selectedUser,
+                user_id:
+                  selectedUser,
                 day,
                 hour,
                 fixed: false,
@@ -712,7 +897,8 @@ export default function App() {
 
           if (
             insertError &&
-            insertError.code !== "23505"
+            insertError.code !==
+              "23505"
           ) {
             throw insertError;
           }
@@ -743,6 +929,7 @@ export default function App() {
             <p className="eyebrow">
               Weekly planner
             </p>
+
             <h1>
               Unavailable Schedule
             </h1>
@@ -765,6 +952,7 @@ export default function App() {
           <p className="eyebrow">
             Weekly planner
           </p>
+
           <h1>
             Unavailable Schedule
           </h1>
@@ -777,13 +965,89 @@ export default function App() {
 
       <main className="content">
         {error && (
-          <section className="explanation">
+          <section className="explanation error-message">
             <strong>
               Database error:
             </strong>{" "}
             {error}
           </section>
         )}
+
+        <section
+          className="calendar-week-panel"
+          aria-label="Week selector"
+        >
+          <div className="calendar-week-info">
+            <CalendarDays size={20} />
+
+            <div>
+              <span>
+                Selected week
+              </span>
+
+              <strong>
+                {weekDateRange}
+              </strong>
+            </div>
+          </div>
+
+          <div className="calendar-week-controls">
+            <button
+              type="button"
+              className="week-nav-button"
+              onClick={() =>
+                setSelectedWeek(
+                  shiftWeek(
+                    selectedWeek,
+                    -1,
+                  ),
+                )
+              }
+              aria-label="Previous week"
+            >
+              <ChevronLeft size={18} />
+            </button>
+
+            <input
+              type="week"
+              className="week-input"
+              value={selectedWeek}
+              onChange={(event) =>
+                setSelectedWeek(
+                  event.target.value,
+                )
+              }
+            />
+
+            <button
+              type="button"
+              className="week-nav-button"
+              onClick={() =>
+                setSelectedWeek(
+                  shiftWeek(
+                    selectedWeek,
+                    1,
+                  ),
+                )
+              }
+              aria-label="Next week"
+            >
+              <ChevronRight size={18} />
+            </button>
+
+            <button
+              type="button"
+              className="current-week-button"
+              onClick={() =>
+                setSelectedWeek(
+                  getISOWeekValue(),
+                )
+              }
+            >
+              Current week
+            </button>
+          </div>
+        </section>
 
         <section
           className="control-panel"
@@ -809,7 +1073,9 @@ export default function App() {
                       user.color,
                   }}
                   onClick={() =>
-                    setSelectedUser(user.id)
+                    setSelectedUser(
+                      user.id,
+                    )
                   }
                   disabled={saving}
                 >
@@ -830,7 +1096,9 @@ export default function App() {
 
           <label
             className={`fixed-mode ${
-              fixedMode ? "active" : ""
+              fixedMode
+                ? "active"
+                : ""
             }`}
           >
             <input
@@ -861,19 +1129,25 @@ export default function App() {
             <button
               type="button"
               className="secondary-button"
-              onClick={clearSelectedUser}
+              onClick={
+                clearSelectedUser
+              }
               disabled={saving}
             >
-              Clear {selectedUserData.name}
+              Clear{" "}
+              {selectedUserData.name}
             </button>
 
             <button
               type="button"
               className="danger-button"
-              onClick={hardClearSelectedUser}
+              onClick={
+                hardClearSelectedUser
+              }
               disabled={saving}
             >
               <RotateCcw size={16} />
+
               Hard Clear{" "}
               {selectedUserData.name}
             </button>
@@ -896,6 +1170,7 @@ export default function App() {
           use the lock mode, survive
           Clear, and only disappear
           with Hard Clear.
+
           {saving && (
             <>
               {" "}
@@ -908,7 +1183,7 @@ export default function App() {
 
         <section
           className="legend"
-          aria-label="User color legend"
+          aria-label="User colour legend"
         >
           {USERS.map((user) => (
             <UserBadge
@@ -934,7 +1209,9 @@ export default function App() {
                   className="day-header"
                   key={day}
                 >
-                  <strong>{day}</strong>
+                  <strong>
+                    {day}
+                  </strong>
 
                   <button
                     type="button"
@@ -962,33 +1239,38 @@ export default function App() {
                     <strong>
                       {label}
                     </strong>
+
                     <small>
                       {endLabel}
                     </small>
                   </div>,
 
-                  ...DAYS.map((day) => (
-                    <UnavailabilityCell
-                      key={`${day}-${hour}`}
-                      day={day}
-                      hour={hour}
-                      selectedUser={
-                        selectedUser
-                      }
-                      slot={
-                        unavailability[
-                          day
-                        ][hour]
-                      }
-                      fixedMode={
-                        fixedMode
-                      }
-                      onToggle={
-                        toggleUnavailability
-                      }
-                      disabled={saving}
-                    />
-                  )),
+                  ...DAYS.map(
+                    (day) => (
+                      <UnavailabilityCell
+                        key={`${day}-${hour}`}
+                        day={day}
+                        hour={hour}
+                        selectedUser={
+                          selectedUser
+                        }
+                        slot={
+                          unavailability[
+                            day
+                          ][hour]
+                        }
+                        fixedMode={
+                          fixedMode
+                        }
+                        onToggle={
+                          toggleUnavailability
+                        }
+                        disabled={
+                          saving
+                        }
+                      />
+                    ),
+                  ),
                 ],
               )}
             </div>
@@ -1004,6 +1286,7 @@ export default function App() {
               <p className="eyebrow">
                 Everyone available
               </p>
+
               <h2>
                 Open slots
               </h2>
@@ -1017,8 +1300,9 @@ export default function App() {
 
           {openSlots.length === 0 ? (
             <div className="no-common">
-              No hour is currently open
-              for all four people.
+              No hour is currently
+              open for all four
+              people.
             </div>
           ) : (
             <div className="common-list">
