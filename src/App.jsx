@@ -144,12 +144,12 @@ export default function App() {
     [selectedUser],
   );
 
-  const commonSlots = useMemo(() => {
+  const openSlots = useMemo(() => {
     const slots = [];
 
     for (const day of DAYS) {
       for (const { hour, label } of HOURS) {
-        if (unavailability[day][hour].length === USERS.length) {
+        if (unavailability[day][hour].length === 0) {
           slots.push({ day, hour, label });
         }
       }
@@ -313,23 +313,23 @@ export default function App() {
           </div>
         </section>
 
-        <section className="common-section" aria-label="Common unavailability">
+        <section className="common-section" aria-label="Everyone available">
           <div className="common-heading">
             <div>
-              <p className="eyebrow">Everyone unavailable</p>
-              <h2>Blocked slots</h2>
+              <p className="eyebrow">Everyone available</p>
+              <h2>Open slots</h2>
             </div>
             <div className="common-count">
-              {commonSlots.length}
+              {openSlots.length}
               <span>slots</span>
             </div>
           </div>
 
-          {commonSlots.length === 0 ? (
-            <div className="no-common">No hour is currently blocked for all four people.</div>
+          {openSlots.length === 0 ? (
+            <div className="no-common">No hour is currently open for all four people.</div>
           ) : (
             <div className="common-list">
-              {commonSlots.map((slot) => (
+              {openSlots.map((slot) => (
                 <div className="common-slot" key={`${slot.day}-${slot.hour}`}>
                   <strong>{slot.day}</strong>
                   <span>
