@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, RotateCcw, Users } from "lucide-react";
+import { Check, Lock, RotateCcw, Users } from "lucide-react";
 
 const USERS = [
   { id: "MIGUEL", name: "MIGUEL", color: "#2563eb" },
@@ -32,13 +32,36 @@ const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, index) => {
   };
 });
 
+function emptySlot() {
+  return { normal: [], fixed: [] };
+}
+
 function getEmptyUnavailability() {
   return Object.fromEntries(
     DAYS.map((day) => [
       day,
-      Object.fromEntries(HOURS.map(({ hour }) => [hour, []])),
+      Object.fromEntries(HOURS.map(({ hour }) => [hour, emptySlot()])),
     ]),
   );
+}
+
+function cleanUsers(users, userIds) {
+  return Array.isArray(users) ? users.filter((userId) => userIds.has(userId)) : [];
+}
+
+function normalizeSlot(value, userIds) {
+  if (Array.isArray(value)) {
+    return { normal: cleanUsers(value, userIds), fixed: [] };
+  }
+
+  return {
+    normal: cleanUsers(value?.normal, userIds),
+    fixed: cleanUsers(value?.fixed, userIds),
+  };
+}
+
+function getSlotUsers(slot) {
+  return [...new Set([...(slot?.normal ?? []), ...(slot?.fixed ?? [])])];
 }
 
 function normalizeUnavailability(value) {
@@ -47,11 +70,7 @@ function normalizeUnavailability(value) {
 
   for (const day of DAYS) {
     for (const { hour } of HOURS) {
-      const savedUsers = value?.[day]?.[hour];
-
-      if (Array.isArray(savedUsers)) {
-        base[day][hour] = savedUsers.filter((userId) => userIds.has(userId));
-      }
+      base[day][hour] = normalizeSlot(value?.[day]?.[hour], userIds);
     }
   }
 
@@ -79,9 +98,12 @@ function UserBadge({ user, compact = false }) {
   );
 }
 
-function UnavailabilityCell({ day, hour, selectedUser, unavailableUsers, onToggle }) {
-  const users = USERS.filter((user) => unavailableUsers.includes(user.id));
-  const selected = unavailableUsers.includes(selectedUser);
+function UnavailabilityCell({ day, hour, selectedUser, slot, fixedMode, onToggle }) {
+  const unavailableUserIds = getSlotUsers(slot);
+  const users = USERS.filter((user) => unavailableUserIds.includes(user.id));
+  const selectedNormal = slot.normal.includes(selectedUser);
+  const selectedFixed = slot.fixed.includes(selectedUser);
+  const selected = selectedNormal || selectedFixed;
   const everyoneUnavailable = users.length === USERS.length;
   const label =
     users.length === 0
@@ -93,9 +115,10 @@ function UnavailabilityCell({ day, hour, selectedUser, unavailableUsers, onToggl
       type="button"
       className={`availability-cell ${selected ? "selected-by-current-user" : ""} ${
         everyoneUnavailable ? "everyone-available" : ""
-      }`}
+      } ${selectedFixed ? "fixed-by-current-user" : ""}`}
       onClick={() => onToggle(day, hour)}
-      aria-label={label}
+      aria-label={`${label}${selectedFixed ? ", fixed marker" : ""}`}
+      title={fixedMode ? "Fixed mode: click to toggle a protected unavailable marker" : undefined}
     >
       {users.length === 0 ? (
         <span className="empty-cell-text">+</span>
@@ -107,9 +130,9 @@ function UnavailabilityCell({ day, hour, selectedUser, unavailableUsers, onToggl
           {users.map((user) => (
             <span
               key={user.id}
-              className="availability-segment"
+              className={`availability-segment ${slot.fixed.includes(user.id) ? "fixed-segment" : ""}`}
               style={{ backgroundColor: user.color }}
-              title={user.name}
+              title={`${user.name}${slot.fixed.includes(user.id) ? " fixed" : ""}`}
             />
           ))}
         </span>
@@ -117,7 +140,7 @@ function UnavailabilityCell({ day, hour, selectedUser, unavailableUsers, onToggl
 
       {selected && (
         <span className="selected-check" aria-hidden="true">
-          <Check size={12} strokeWidth={4} />
+          {selectedFixed ? <Lock size={12} strokeWidth={3} /> : <Check size={12} strokeWidth={4} />}
         </span>
       )}
 
@@ -133,6 +156,7 @@ function UnavailabilityCell({ day, hour, selectedUser, unavailableUsers, onToggl
 
 export default function App() {
   const [selectedUser, setSelectedUser] = useState("MIGUEL");
+  const [fixedMode, setFixedMode] = useState(false);
   const [unavailability, setUnavailability] = useState(loadUnavailability);
 
   useEffect(() => {
@@ -149,7 +173,7 @@ export default function App() {
 
     for (const day of DAYS) {
       for (const { hour, label } of HOURS) {
-        if (unavailability[day][hour].length === 0) {
+        if (getSlotUsers(unavailability[day][hour]).length === 0) {
           slots.push({ day, hour, label });
         }
       }
@@ -160,17 +184,21 @@ export default function App() {
 
   function toggleUnavailability(day, hour) {
     setUnavailability((current) => {
-      const currentUsers = current[day][hour];
-      const isUnavailable = currentUsers.includes(selectedUser);
-      const updatedUsers = isUnavailable
-        ? currentUsers.filter((user) => user !== selectedUser)
-        : [...currentUsers, selectedUser];
+      const currentSlot = current[day][hour];
+      const normal = currentSlot.normal.filter((user) => user !== selectedUser);
+      const fixed = currentSlot.fixed.filter((user) => user !== selectedUser);
+      const isFixed = currentSlot.fixed.includes(selectedUser);
+      const isNormal = currentSlot.normal.includes(selectedUser);
+
+      const updatedSlot = fixedMode
+        ? { normal, fixed: isFixed ? fixed : [...fixed, selectedUser] }
+        : { normal: isNormal ? normal : [...normal, selectedUser], fixed: currentSlot.fixed };
 
       return {
         ...current,
         [day]: {
           ...current[day],
-          [hour]: updatedUsers,
+          [hour]: updatedSlot,
         },
       };
     });
@@ -191,23 +219,36 @@ export default function App() {
   }
 
   function clearSelectedUser() {
-    updateAllSlots((slot) => slot.filter((user) => user !== selectedUser));
+    updateAllSlots((slot) => ({
+      ...slot,
+      normal: slot.normal.filter((user) => user !== selectedUser),
+    }));
+  }
+
+  function hardClearSelectedUser() {
+    updateAllSlots((slot) => ({
+      normal: slot.normal.filter((user) => user !== selectedUser),
+      fixed: slot.fixed.filter((user) => user !== selectedUser),
+    }));
   }
 
   function markWholeDay(day) {
     setUnavailability((current) => {
       const updated = structuredClone(current);
       const everySlotSelected = HOURS.every(({ hour }) =>
-        updated[day][hour].includes(selectedUser),
+        updated[day][hour].normal.includes(selectedUser),
       );
 
       for (const { hour } of HOURS) {
         const slot = updated[day][hour];
-        updated[day][hour] = everySlotSelected
-          ? slot.filter((user) => user !== selectedUser)
-          : slot.includes(selectedUser)
-            ? slot
-            : [...slot, selectedUser];
+        updated[day][hour] = {
+          ...slot,
+          normal: everySlotSelected
+            ? slot.normal.filter((user) => user !== selectedUser)
+            : slot.normal.includes(selectedUser) || slot.fixed.includes(selectedUser)
+              ? slot.normal
+              : [...slot.normal, selectedUser],
+        };
       }
 
       return updated;
@@ -216,16 +257,17 @@ export default function App() {
 
   function markAllWeek() {
     const everySlotSelected = DAYS.every((day) =>
-      HOURS.every(({ hour }) => unavailability[day][hour].includes(selectedUser)),
+      HOURS.every(({ hour }) => unavailability[day][hour].normal.includes(selectedUser)),
     );
 
-    updateAllSlots((slot) =>
-      everySlotSelected
-        ? slot.filter((user) => user !== selectedUser)
-        : slot.includes(selectedUser)
-          ? slot
-          : [...slot, selectedUser],
-    );
+    updateAllSlots((slot) => ({
+      ...slot,
+      normal: everySlotSelected
+        ? slot.normal.filter((user) => user !== selectedUser)
+        : slot.normal.includes(selectedUser) || slot.fixed.includes(selectedUser)
+          ? slot.normal
+          : [...slot.normal, selectedUser],
+    }));
   }
 
   return (
@@ -259,15 +301,32 @@ export default function App() {
             </div>
           </div>
 
+          <label className={`fixed-mode ${fixedMode ? "active" : ""}`}>
+            <input
+              type="checkbox"
+              checked={fixedMode}
+              onChange={(event) => setFixedMode(event.target.checked)}
+            />
+            <Lock size={16} />
+            Fixed marker
+          </label>
+
           <div className="global-actions">
             <button type="button" className="secondary-button" onClick={markAllWeek}>
               Mark / Clear Week
             </button>
-            <button type="button" className="danger-button" onClick={clearSelectedUser}>
-              <RotateCcw size={16} />
+            <button type="button" className="secondary-button" onClick={clearSelectedUser}>
               Clear {selectedUserData.name}
             </button>
+            <button type="button" className="danger-button" onClick={hardClearSelectedUser}>
+              <RotateCcw size={16} />
+              Hard Clear {selectedUserData.name}
+            </button>
           </div>
+        </section>
+
+        <section className="explanation" aria-label="Marker explanation">
+          <strong>Normal marks</strong> show when someone is unavailable and can be removed with Clear. <strong>Fixed marks</strong> use the lock mode, survive Clear, and only disappear with Hard Clear.
         </section>
 
         <section className="legend" aria-label="User color legend">
@@ -304,7 +363,8 @@ export default function App() {
                     day={day}
                     hour={hour}
                     selectedUser={selectedUser}
-                    unavailableUsers={unavailability[day][hour]}
+                    slot={unavailability[day][hour]}
+                    fixedMode={fixedMode}
                     onToggle={toggleUnavailability}
                   />
                 )),
@@ -344,4 +404,3 @@ export default function App() {
     </div>
   );
 }
-
