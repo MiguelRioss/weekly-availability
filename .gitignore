@@ -5,3 +5,6 @@ dist
 .DS_Store
 .idea
 .vscode
+.env.local
+.env
+.env.*.local
